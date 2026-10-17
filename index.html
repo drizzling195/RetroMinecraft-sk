@@ -317,8 +317,8 @@ const themes = [
   {sky:"#6b9dbb",far:"#526c89",grass:"#70945d",dirt:"#6f574d",stone:"#7b8793",name:"FROST PASS"},
   {sky:"#e2a47a",far:"#a96d62",grass:"#a9a04f",dirt:"#8b5b42",stone:"#85776e",name:"EMBER LAND"},
   {sky:"#7f9eb8",far:"#5c718b",grass:"#758b54",dirt:"#685b4d",stone:"#6f7b8b",name:"ANCIENT PATH"},
-  {sky:"#ba9ac8",far:"#826d9f",grass:"#7e9b63",dirt:"#72536a",stone:"#7d728b",name:"CRYSTAL VALE"},
-  {sky:"#687e9e",far:"#3e4c69",grass:"#6d8c65",dirt:"#574b56",stone:"#697184",name:"FINAL FRONTIER"}
+  {sky:"#382b45",far:"#59405a",grass:"#75604b",dirt:"#493747",stone:"#766879",name:"DARK CASTLE"},
+  {sky:"#171b35",far:"#302b50",grass:"#55434a",dirt:"#382d40",stone:"#61566d",name:"DRAGON KEEP"}
 ];
 
 let state = "menu";
@@ -340,6 +340,7 @@ let blocks = [];
 let items = [];
 let enemies = [];
 let shots = [];
+let hostileShots = [];
 let particles = [];
 let checkpoints = [];
 let goal = {x:0,y:0,w:20,h:42};
@@ -377,15 +378,15 @@ function makePlayer(x,y) {
           facing:1,anim:0};
 }
 function makeEnemy(x,y,type,minX,maxX) {
-  const boss = ["zombieBoss","endermanBoss","boss"].includes(type);
-  const hp = type==="zombieBoss"?6:type==="endermanBoss"?8:type==="boss"?10:2;
-  const size = type==="zombieBoss"?{w:22,h:30}:type==="endermanBoss"?{w:28,h:42}:type==="boss"?{w:32,h:46}:{w:16,h:18};
+  const boss = ["zombieBoss","endermanBoss","boss","dragonBoss"].includes(type);
+  const hp = type==="zombieBoss"?6:type==="endermanBoss"?8:type==="dragonBoss"?16:type==="boss"?14:2;
+  const size = type==="zombieBoss"?{w:22,h:30}:type==="endermanBoss"?{w:28,h:42}:type==="dragonBoss"?{w:58,h:46}:type==="boss"?{w:32,h:46}:{w:16,h:18};
   return {
     x,y,w:size.w,h:size.h,type,
     vx:rand(.35,.65)*(Math.random()<.5?-1:1),
     vy:0,minX,maxX,alive:true,
     hp,maxHp:hp,phase:rand(0,6),
-    isBoss:boss,baseY:y,airTimer:0,stompCount:0
+    isBoss:boss,baseY:y,airTimer:0,stompCount:0,attackTimer:type==="endermanBoss"?75:type==="boss"?65:0,attackTell:0
   };
 }
 function solidBlocks() {
@@ -401,6 +402,7 @@ function buildStage(index) {
   items = [];
   enemies = [];
   shots = [];
+  hostileShots = [];
   particles = [];
   checkpoints = [];
   nextId = 1;
@@ -494,10 +496,10 @@ function buildStage(index) {
   let bossType = null;
   if (stageIndex===2) bossType="zombieBoss";
   if (stageIndex===6) bossType="endermanBoss";
-  if (stageIndex===STAGE_COUNT-1) bossType="boss";
+  if (stageIndex===STAGE_COUNT-1) bossType="dragonBoss";
   if (bossType) {
     const bossX=stageWidth-260;
-    const boss=makeEnemy(bossX,groundY-(bossType==="zombieBoss"?30:bossType==="endermanBoss"?42:46),bossType,stageWidth-390,stageWidth-120);
+    const boss=makeEnemy(bossX,groundY-(bossType==="zombieBoss"?30:bossType==="endermanBoss"?42:bossType==="dragonBoss"?46:46),bossType,stageWidth-390,stageWidth-120);
     boss.baseY=boss.y;
     enemies.push(boss);
   }
@@ -596,6 +598,7 @@ function hurt(forceDamage=false) {
   invulnerability = 100;
   attackCooldown = 0;
   shots = [];
+  hostileShots = [];
   timeLeft = STAGE_TIME;
   timerAccumulator = 0;
 
@@ -670,6 +673,7 @@ function triggerTnt(block) {
   invulnerability = 100;
   attackCooldown = 0;
   shots = [];
+  hostileShots = [];
   timeLeft = STAGE_TIME;
   timerAccumulator = 0;
   updateHud();
@@ -992,6 +996,19 @@ function updateEnemies(dt) {
       enemy.y=floorY-enemy.h;
     }
 
+    if(enemy.type==="endermanBoss" || enemy.type==="dragonBoss") {
+      enemy.attackTimer-=step;
+      if(enemy.attackTimer<=0) {
+        const sx=enemy.x+enemy.w/2, sy=enemy.y+enemy.h*.45;
+        const dx=(player.x+player.w/2)-sx, dy=(player.y+player.h/2)-sy;
+        const len=Math.hypot(dx,dy)||1;
+        const speed=enemy.type==="dragonBoss"?1.45:1.25;
+        hostileShots.push({x:sx-4,y:sy-4,w:8,h:8,vx:dx/len*speed,vy:dy/len*speed,life:150,type:enemy.type});
+        enemy.attackTell=18;
+        enemy.attackTimer=enemy.type==="dragonBoss"?82:105;
+      }
+      if(enemy.attackTell>0) enemy.attackTell-=step;
+    }
     if (!intersects(player,enemy)) continue;
 
     const previousBottom=player.y+player.h-player.vy;
@@ -1012,7 +1029,7 @@ function updateEnemies(dt) {
         enemy.hp=0;
         enemy.alive=false;
       }
-      if (!enemy.alive) score+=enemy.isBoss?(enemy.type==="boss"?1000:enemy.type==="endermanBoss"?700:400):75;
+      if (!enemy.alive) score+=enemy.isBoss?(enemy.type==="dragonBoss"?1600:enemy.type==="boss"?1000:enemy.type==="endermanBoss"?700:400):75;
       spawnParticles(enemy.x+enemy.w/2,enemy.y,enemy.isBoss?"#c58cff":"#a4df86",enemy.isBoss?14:8);
     } else if (!(enemy.isBoss&&enemy.airTimer>0)) {
       hurt();
@@ -1039,7 +1056,7 @@ function updateShots(dt) {
 
       if (enemy.hp<=0) {
         enemy.alive=false;
-        score+=enemy.isBoss?(enemy.type==="boss"?1000:enemy.type==="endermanBoss"?700:400):75;
+        score+=enemy.isBoss?(enemy.type==="dragonBoss"?1600:enemy.type==="boss"?1000:enemy.type==="endermanBoss"?700:400):75;
         spawnParticles(
           enemy.x+enemy.w/2,enemy.y+enemy.h/2,"#8ad77a",12
         );
@@ -1050,6 +1067,15 @@ function updateShots(dt) {
   shots=shots.filter(s=>
     s.life>0&&s.x>cameraX-40&&s.x<cameraX+W+40
   );
+}
+
+function updateHostileShots(dt) {
+  const step=dt/16.667;
+  for(const shot of hostileShots) {
+    shot.x+=shot.vx*step; shot.y+=shot.vy*step; shot.life-=step;
+    if(intersects(player,shot)) { hurt(); shot.life=0; }
+  }
+  hostileShots=hostileShots.filter(s=>s.life>0 && s.x>cameraX-30 && s.x<cameraX+W+30 && s.y>-20 && s.y<H+20);
 }
 
 function updateCamera() {
@@ -1135,6 +1161,7 @@ function update(dt) {
   }
 
   updateShots(dt);
+  updateHostileShots(dt);
   updateParticles(dt);
   updateCamera();
   updateHud();
@@ -1151,6 +1178,22 @@ function rect(x,y,w,h,color) {
 function drawSky() {
   const t=theme();
   rect(0,0,W,H,t.sky);
+  if(stageIndex>=8) {
+    // 城壁・尖塔・溶岩の光でクッパ城風の不気味な城内を演出
+    rect(0,150,W,120,"#241d30");
+    for(let i=0;i<7;i++) {
+      const x=((i*91-cameraX*.18)%(W+100)+W+100)%(W+100)-45;
+      rect(x,54,32,132,"#49364d"); rect(x+5,45,22,10,"#66506a");
+      rect(x+10,35,12,14,"#38283e"); rect(x+13,28,6,8,"#806078");
+      rect(x+7,83,5,19,"#f1a34d"); rect(x+20,83,5,19,"#f1a34d");
+      rect(x+8,85,3,15,"#ffdf83"); rect(x+21,85,3,15,"#ffdf83");
+    }
+    for(let i=0;i<5;i++) {
+      const x=((i*117-cameraX*.32)%(W+80)+W+80)%(W+80)-30;
+      rect(x,218,44,5,"#9d4938"); rect(x+5,214,34,4,"#e4773c");
+    }
+    return;
+  }
 
   ctx.fillStyle=t.far;
   ctx.beginPath();
@@ -1194,7 +1237,8 @@ function drawBlock(b) {
   // Minecraft風の立方体：上面・正面・側面を分け、ピクセル状の模様を敷く。
   const topH=Math.min(5,Math.max(3,Math.floor(h/5)));
   let base=t.dirt, top=t.grass, dark="#000000";
-  if (b.type==="ground"||b.type==="platform") { base="#8b603e"; top="#65a844"; }
+  if(stageIndex>=8) { base="#554456"; top="#8c6a79"; }
+  if (b.type==="ground"||b.type==="platform") { base=stageIndex>=8?"#554456":"#8b603e"; top=stageIndex>=8?"#8c6a79":"#65a844"; }
   if (b.type==="stone") { base="#777d80"; top="#9ba09b"; }
   if (b.type==="brick") { base="#986442"; top="#bd8a5b"; }
   if (b.type==="wood") { base="#795331"; top="#b58a4f"; }
@@ -1324,7 +1368,17 @@ function drawHero(x,y,facing,anim=0,heroType=selectedHero) {
 function drawEnemy(e) {
   const x=Math.round(e.x-cameraX),y=Math.round(e.y);
   if(x+e.w<0||x>W)return;
-  if(e.type==="zombieBoss") {
+  if(e.type==="dragonBoss") {
+    // 最終ボス：紫黒の翼を広げたエンダードラゴン風の大型ドット絵
+    rect(x+18,y+8,25,19,"#171426"); rect(x+22,y+10,18,14,"#342342");
+    rect(x+39,y+12,13,7,"#21172d"); rect(x+48,y+13,7,4,"#5b315f");
+    rect(x+3,y+4,19,17,"#251a38"); rect(x+0,y+0,22,10,"#56345f");
+    rect(x+3,y+19,18,5,"#171426"); rect(x+39,y+25,13,5,"#171426");
+    rect(x+13,y+26,7,16,"#171426"); rect(x+37,y+27,7,15,"#171426");
+    rect(x+49,y+17,8,3,"#171426"); rect(x+51,y+18,3,2,"#d78aff");
+    rect(x+44,y+12,4,3,"#ef9cff"); rect(x+45,y+13,2,1,"#ffffff");
+    rect(x-1,y-5,60,3,"#24172c"); rect(x,y-4,58*(e.hp/e.maxHp),2,"#c45be8");
+  } else if(e.type==="zombieBoss") {
     // ゾンビ小ボス：緑色の大きな頭と青い服、四角い腕と脚。
     rect(x+5,y,12,12,"#568f45"); rect(x+6,y+1,10,3,"#78b85a");
     rect(x+7,y+5,2,2,"#18251d"); rect(x+13,y+5,2,2,"#18251d");
@@ -1372,8 +1426,11 @@ function drawEnemy(e) {
     rect(x+1,y+29,3,8,"#171923"); rect(x+24,y+29,3,8,"#171923");
     rect(x+9,y+5,4,2,"#d98cff"); rect(x+16,y+5,4,2,"#d98cff");
     rect(x+9,y+6,3,1,"#ffffff"); rect(x+16,y+6,3,1,"#ffffff");
-    rect(x-2,y-8,32,4,"#252333"); rect(x-1,y-7,30*(e.hp/e.maxHp),2,"#df79ed");
     for(let i=0;i<3;i++) rect(x+rand(0,26),y+rand(3,32),2,2,"#c77be8");
+  }
+  if(e.isBoss && e.type!=="dragonBoss") {
+    rect(x-2,y-8,e.w+4,4,"#252333");
+    rect(x-1,y-7,(e.w+2)*(e.hp/e.maxHp),2,e.type==="zombieBoss"?"#7de05a":"#df79ed");
   }
 }
 function drawGoal() {
@@ -1406,6 +1463,12 @@ function drawCheckpoints() {
 }
 
 function drawShots() {
+  for(const shot of hostileShots) {
+    const x=shot.x-cameraX, y=shot.y;
+    rect(x,y,8,8,shot.type==="dragonBoss"?"#ef7c43":"#b85be8");
+    rect(x+2,y-2,4,12,shot.type==="dragonBoss"?"#ffbd65":"#e8a5ff");
+    rect(x+2,y+2,4,4,"#fff0c2");
+  }
   for (const s of shots) {
     const x=s.x-cameraX;
     rect(x,s.y+2,s.w,3,"#8cecf7");
